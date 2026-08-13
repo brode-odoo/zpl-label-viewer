@@ -69,7 +69,7 @@ The content script is registered for `<all_urls>` so it can auto-detect anywhere
 To limit it to your Odoo host, change `matches` in `manifest.json`:
 
 ```json
-"matches": ["http://brode-laptop:8019/*"]
+"matches": ["http://localhost:PORT/*"]
 ```
 
 The toolbar icon still works elsewhere via `activeTab` + `scripting`.
