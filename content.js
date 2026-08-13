@@ -17,7 +17,10 @@
     rotation: 0,
     autoOpen: true,
     live: true,
-    fit: true
+    fit: true,
+    tab: 'design',
+    snap: 5,
+    autoFormat: false
   };
 
   const SIZES = [
@@ -45,6 +48,7 @@
   };
 
   let ui = null;
+  let designer = null;
   let debounce = null;
 
   const api = {
@@ -118,6 +122,10 @@
   async function openViewer(zpl) {
     if (!ui) ui = await buildUI();
     if (typeof zpl === 'string' && (zpl || !ui.code.value)) ui.code.value = zpl;
+    if (state.settings.autoFormat && ui.code.value.trim()) {
+      ui.code.value = window.__zplModel.format(ui.code.value) || ui.code.value;
+    }
+    updateEditorStatus(ui);
     state.index = 0;
     state.open = true;
     ui.host.style.setProperty('display', 'block', 'important');
@@ -201,11 +209,22 @@
             <button class="icon" id="zoomIn" title="Zoom in">+</button>
           </div>
 
+          <div class="group" id="snapGroup">
+            <label for="snap">Snap</label>
+            <select id="snap">
+              <option value="1">1 dot</option>
+              <option value="5">5 dots</option>
+              <option value="10">10 dots</option>
+              <option value="25">25 dots</option>
+            </select>
+          </div>
+
           <div class="spacer"></div>
 
           <label class="group" title="Re-render as you type">
             <input type="checkbox" id="live"> <span>Live</span>
           </label>
+          <button id="format" title="Tidy the ZPL: one field per line (Shift+Alt+F)">Format</button>
           <button class="primary" id="render" title="Render (Ctrl+Enter)">Render</button>
           <button id="copy" title="Copy the ZPL back to the clipboard">Copy ZPL</button>
           <button id="png" title="Download the rendered label as PNG">PNG</button>
@@ -216,10 +235,17 @@
 
         <div class="panes">
           <div class="pane editor">
-            <div class="pane-head">
-              <span>ZPL source</span>
+            <div class="pane-head tabs">
+              <button class="tab" id="tabDesign" data-tab="design">Design</button>
+              <button class="tab" id="tabZpl" data-tab="zpl">ZPL</button>
               <span class="spacer"></span>
-              <span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> render · <kbd>Esc</kbd> close</span>
+              <label class="mini" title="Format the ZPL every time the viewer opens">
+                <input type="checkbox" id="autoFormat"> <span>Auto-format</span>
+              </label>
+            </div>
+            <div class="designBody" id="designBody">
+              <div id="palette"></div>
+              <div id="inspector"></div>
             </div>
             <textarea id="code" spellcheck="false" wrap="off"
               placeholder="^XA … ^XZ"></textarea>
@@ -227,7 +253,11 @@
           </div>
 
           <div class="pane preview">
-            <div class="pane-head"><span>Preview</span></div>
+            <div class="pane-head">
+              <span>Preview</span>
+              <span class="spacer"></span>
+              <span class="hint" id="hint"></span>
+            </div>
             <div class="stage fit" id="stage">
               <div class="placeholder" id="placeholder">Paste or edit ZPL on the left, then hit Render.</div>
             </div>
@@ -258,6 +288,16 @@
       zoomOut: $('zoomOut'),
       zoomFit: $('zoomFit'),
       live: $('live'),
+      snap: $('snap'),
+      snapGroup: $('snapGroup'),
+      autoFormat: $('autoFormat'),
+      tabDesign: $('tabDesign'),
+      tabZpl: $('tabZpl'),
+      designBody: $('designBody'),
+      palette: $('palette'),
+      inspector: $('inspector'),
+      hint: $('hint'),
+      wrap: root.querySelector('.wrap'),
       code: $('code'),
       stage: $('stage'),
       placeholder: $('placeholder'),
@@ -269,6 +309,7 @@
       btnPng: $('png'),
       btnPdf: $('pdf'),
       btnPrint: $('print'),
+      btnFormat: $('format'),
       btnClose: $('close')
     };
 
@@ -280,7 +321,28 @@
     u.live.checked = !!state.settings.live;
     syncSizeSelect(u);
     u.zoomFit.textContent = state.settings.fit ? 'Fit' : '100%';
+    u.snap.value = String(state.settings.snap);
+    u.autoFormat.checked = !!state.settings.autoFormat;
     u.pager.style.display = 'none'; // shown once a multi-label render comes back
+
+    designer = window.__zplDesigner({
+      wrap: u.wrap,
+      palette: u.palette,
+      inspector: u.inspector,
+      hint: u.hint,
+      getZpl: () => u.code.value,
+      setZpl: (v) => {
+        u.code.value = v;
+        updateEditorStatus(u);
+      },
+      getLabelIndex: () => state.index,
+      getView: () => ({
+        img: u.stage.querySelector('img'),
+        overlay: u.stage.querySelector('.overlay')
+      }),
+      requestRender: () => scheduleRender()
+    });
+    designer.setSnap(state.settings.snap);
 
     // --- wiring
     u.dpmm.addEventListener('change', () => {
@@ -328,6 +390,21 @@
       applyZoom();
     });
 
+    u.tabDesign.addEventListener('click', () => setTab('design'));
+    u.tabZpl.addEventListener('click', () => setTab('zpl'));
+
+    u.snap.addEventListener('change', () => {
+      state.settings.snap = Number(u.snap.value) || 1;
+      designer.setSnap(state.settings.snap);
+      saveSettings();
+    });
+
+    u.autoFormat.addEventListener('change', () => {
+      state.settings.autoFormat = u.autoFormat.checked;
+      saveSettings();
+    });
+
+    u.btnFormat.addEventListener('click', formatCode);
     u.btnRender.addEventListener('click', () => render());
     u.btnClose.addEventListener('click', closeViewer);
     u.btnCopy.addEventListener('click', copyZpl);
@@ -337,16 +414,27 @@
 
     u.code.addEventListener('input', () => {
       updateEditorStatus(u);
-      if (u.live.checked) {
-        clearTimeout(debounce);
-        debounce = setTimeout(() => render(), 600);
-      }
+      designer.refresh();
+      if (u.live.checked) scheduleRender(600);
     });
+
+    u.stage.addEventListener('pointerdown', (e) => {
+      if (e.target === u.stage || e.target.classList.contains('overlay')) designer.clearSelection();
+    });
+
+    window.addEventListener('resize', () => designer && designer.drawOverlay());
 
     // Keep the host page (Odoo binds plenty of shortcuts) out of our keys.
     root.addEventListener('keydown', (e) => {
       e.stopPropagation();
-      if (e.key === 'Escape') {
+      if (designer && designer.handleKey(e)) {
+        e.preventDefault();
+        return;
+      }
+      if (e.code === 'KeyF' && e.altKey && e.shiftKey) {
+        e.preventDefault();
+        formatCode();
+      } else if (e.key === 'Escape') {
         e.preventDefault();
         closeViewer();
       } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -363,7 +451,40 @@
     });
 
     updateEditorStatus(u);
+    ui = u; // setTab/formatCode read through the module-level handle
+    setTab(state.settings.tab);
     return u;
+  }
+
+  function setTab(tab) {
+    if (!ui) return;
+    state.settings.tab = tab === 'zpl' ? 'zpl' : 'design';
+    const design = state.settings.tab === 'design';
+    ui.designBody.style.display = design ? '' : 'none';
+    ui.code.style.display = design ? 'none' : '';
+    ui.tabDesign.classList.toggle('on', design);
+    ui.tabZpl.classList.toggle('on', !design);
+    ui.snapGroup.style.display = design ? '' : 'none';
+    if (designer) {
+      designer.setActive(design);
+      if (design) designer.refresh();
+    }
+    saveSettings();
+  }
+
+  function formatCode() {
+    if (!ui) return;
+    const out = window.__zplModel.format(ui.code.value);
+    if (!out || out === ui.code.value) return;
+    ui.code.value = out;
+    updateEditorStatus(ui);
+    if (designer) designer.refresh(); // field offsets all moved
+    flash(ui.btnFormat, 'Formatted');
+  }
+
+  function scheduleRender(delay) {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => render(), delay || 350);
   }
 
   async function loadCss() {
@@ -383,7 +504,16 @@
       .pane.editor{width:42%}.pane.preview{flex:1;background:#101116}
       textarea{flex:1;width:100%;background:#16171b;color:#d7dbe6;font-family:monospace;border:0;padding:10px}
       .stage{flex:1;overflow:auto;display:flex;justify-content:center;padding:16px}
-      .sheet{background:#fff}.sheet img{display:block;max-width:100%}
+      .sheet{background:#fff;position:relative}.sheet img{display:block;max-width:100%}
+      .overlay{position:absolute;inset:0}
+      .el{position:absolute;border:1px dashed #2f6df6;background:rgba(47,109,246,.08);cursor:move}
+      .el.sel{border-style:solid;background:rgba(47,109,246,.18)}
+      .el .tag{display:none}.el .grip{position:absolute;right:-5px;bottom:-5px;width:10px;height:10px;background:#35c88a}
+      .designBody{flex:1;overflow:auto;padding:12px}
+      .palette{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin-bottom:12px}
+      .block{padding:8px;cursor:grab}.fld{display:flex;flex-direction:column;gap:4px;margin-bottom:8px;font-size:11.5px}
+      .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 8px}.row-btns{display:flex;gap:8px}
+      .tab{background:transparent;border:0;padding:8px 12px}.tab.on{color:#fff;border-bottom:2px solid #2f6df6}
       .status{padding:6px 10px;color:#8a91a2}.status.error{color:#ffb3b3;white-space:pre-wrap}
       .warn{padding:6px 10px;color:#ffd489;background:#2b2517}
       .spacer{flex:1}`;
@@ -482,9 +612,13 @@
       ui.stage.innerHTML = '';
       const sheet = document.createElement('div');
       sheet.className = 'sheet';
+      const overlay = document.createElement('div');
+      overlay.className = 'overlay';
       sheet.appendChild(img);
+      sheet.appendChild(overlay);
       ui.stage.appendChild(sheet);
       applyZoom();
+      designer.refresh();
       const dpi = state.settings.dpmm * 25.4;
       ui.status.className = 'status';
       ui.status.textContent =
@@ -568,6 +702,8 @@
       img.style.width = `${Math.round(img.naturalWidth * state.zoom)}px`;
       img.style.height = 'auto';
     }
+    // The overlay is positioned in screen pixels, so it has to follow the image.
+    if (designer) requestAnimationFrame(() => designer.drawOverlay());
   }
 
   /* ------------------------------------------------------------------ *

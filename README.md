@@ -26,7 +26,10 @@ fonts and watch the label update as you type.
 | Key | Action |
 | --- | --- |
 | <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | Render |
+| <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd> | Format the ZPL |
 | <kbd>Ctrl</kbd>+<kbd>S</kbd> | Download PNG |
+| <kbd>←↑↓→</kbd> | Nudge the selected field (<kbd>Shift</kbd> = ×10) |
+| <kbd>Delete</kbd> | Delete the selected field |
 | <kbd>Esc</kbd> | Close the viewer, show the original page |
 | <kbd>Tab</kbd> | Indent (does not move focus) |
 
@@ -35,8 +38,51 @@ usual Zebra desktop printer), label size in inches (presets + custom), rotation,
 zoom, PNG download, PDF, and print. If the ZPL contains several `^XA…^XZ` blocks
 a pager appears to step through the labels.
 
-Density, size, rotation and the Live toggle are remembered across sessions
-(`chrome.storage.sync`).
+Density, size, rotation, snap and the Live/Auto-format toggles are remembered
+across sessions (`chrome.storage.sync`).
+
+## Design tab
+
+The left pane has two tabs. **ZPL** is the raw code; **Design** is a visual editor
+laid over the real rendered label:
+
+- Every `^FO`/`^FT` field gets a draggable outline on the preview. Drag to move,
+  arrow-keys to nudge, and **Snap** in the toolbar quantises to 1/5/10/25 dots.
+- Drag a **Text**, **Barcode**, **QR code**, **Box** or **Line** block from the palette
+  onto the label to add it where you dropped it.
+- Selecting a field opens an inspector: text content and font size for text;
+  data, symbology, height, module width and human-readable line for barcodes;
+  width/height/thickness/corner radius for boxes (boxes also get a drag-to-resize
+  grip). Plus Duplicate and Delete.
+
+The outlines are *estimated* from the ZPL — the actual render underneath is the
+truth. Text and barcode extents are computed from font size, module width and data
+length, which is close but not exact; they only need to be good enough to grab.
+
+### It edits the code, not a model of it
+
+The ZPL text stays the source of truth. The designer parses it, and each gesture
+patches only the command it concerns — a drag rewrites the `^FO` parameters and
+nothing else. Commands it has no UI for (`^FR`, `^FB`, `^CI`, `^CF`, comments,
+vendor extensions) pass through untouched, as does your formatting, so a field
+like `^FO50,50^FR^FB400,3,0,C^A0N,30,30^FD…^FS` can still be dragged around
+without losing the reverse-print or field-block settings.
+
+## Formatting
+
+**Format** (or <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd>) rewrites the ZPL as one
+field per line, indented inside `^XA`…`^XZ`, with a blank line between labels:
+
+```
+^XA
+  ^FO60,40^A0N,60,33^FDPACK0000001^FS
+  ^FO60,140^BY4^BCN,140,Y,N,N^FDPACK0000001^FS
+^XZ
+```
+
+It rebuilds from parsed tokens rather than by regex, so whitespace *inside* `^FD`
+data — spaces and newlines that the label actually prints — is preserved exactly.
+It is idempotent. Tick **Auto-format** to have it run every time the viewer opens.
 
 ## How rendering works
 
@@ -58,10 +104,13 @@ Rate limit is 5 requests/second; a `429` is retried once after `Retry-After`.
 | File | Role |
 | --- | --- |
 | `manifest.json` | MV3 manifest — content script on all URLs, `api.labelary.com` host permission |
+| `zpl-model.js` | ZPL tokenizer, field parser, command-level patching, formatter |
+| `designer.js` | Palette, draggable field outlines, property inspector |
 | `content.js` | ZPL detection, the shadow-DOM viewer UI, export/print actions |
 | `background.js` | Labelary calls, toolbar-icon and keyboard-shortcut toggle |
 | `viewer.css` | Viewer styles (fetched into the shadow root) |
 | `icons/` | Toolbar icons |
+| `test/model.test.js` | `node test/model.test.js` — parser, patching and formatter checks (no deps) |
 
 ## Narrowing the permissions
 

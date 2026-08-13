@@ -33,7 +33,10 @@ async function toggleViewer(tab) {
   } catch (e) {
     // No content script yet (e.g. the extension was just installed/reloaded).
     try {
-      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['zpl-model.js', 'designer.js', 'content.js']
+      });
       await chrome.tabs.sendMessage(tab.id, { type: 'toggle' });
     } catch (e2) {
       console.warn('ZPL Label Viewer cannot run on this page:', e2);
