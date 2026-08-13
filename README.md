@@ -1,7 +1,7 @@
 # ZPL Label Viewer
 
 A Chrome extension for the Odoo label-template workflow: when a page is raw ZPL
-(e.g. `http://<host>/report/html/stock.label_package_template_view/1`), it takes
+(e.g. `http://<host>/report/html/stock.label_package_template_view/<id>`), it takes
 the page over and shows the **rendered label** instead of the code — with the ZPL
 in an editable pane next to it so you can tune `^FO` offsets, barcode sizes and
 fonts and watch the label update as you type.
