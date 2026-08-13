@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "ZPL Label Viewer",
+  "version": "1.0.0",
+  "description": "Detects raw ZPL on a page and shows the rendered label instead, with a live editor for tweaking the code.",
+  "permissions": ["storage", "scripting", "activeTab"],
+  "host_permissions": ["https://api.labelary.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Toggle ZPL Label Viewer"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["viewer.css"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "commands": {
+    "toggle-viewer": {
+      "suggested_key": { "default": "Alt+Shift+Z" },
+      "description": "Toggle the ZPL label viewer"
+    }
+  }
+}
