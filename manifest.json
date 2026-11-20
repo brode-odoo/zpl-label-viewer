@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ZPL Label Viewer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Detects raw ZPL on a page and shows the rendered label instead, with a live editor for tweaking the code.",
   "permissions": ["storage", "scripting", "activeTab"],
   "host_permissions": ["https://api.labelary.com/*"],

@@ -8,9 +8,13 @@ fonts and watch the label update as you type.
 
 ## Install
 
-1. Open `chrome://extensions`
-2. Turn on **Developer mode** (top right)
-3. **Load unpacked** → pick this folder (`zpl-label-viewer`)
+1. Download `zpl-label-viewer.zip` from the latest
+   [release](https://github.com/brode-odoo/zpl-label-viewer/releases/latest) and unzip it
+2. Open `chrome://extensions`
+3. Turn on **Developer mode** (top right)
+4. **Load unpacked** → pick the unzipped `zpl-label-viewer` folder
+
+(Cloning the repo and loading that folder works too.)
 
 ## Use
 

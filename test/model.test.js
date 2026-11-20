@@ -1,7 +1,7 @@
 const fs = require('fs');
 const vm = require('vm');
 
-const ctx = { window: {}, console };
+const ctx = { window: {}, console, TextDecoder, Uint8Array };
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(require('path').join(__dirname, '..', 'zpl-model.js'), 'utf8'), ctx);
 const ZM = ctx.window.__zplModel;
@@ -94,6 +94,12 @@ ok(ZM.labelBlocks(TWO).length === 2, 'two label blocks');
 ok(ZM.parse(TWO, 1).elements[0].start > TWO.indexOf('^XZ'), 'index 1 parses the second label');
 const ins2 = ZM.insert(TWO, 1, 'text', 5, 5);
 ok(ins2.zpl.indexOf('^FO5,5') > ins2.zpl.indexOf('^XZ'), 'insert targets the selected label');
+
+// --- mojibake repair (UTF-8 text/plain decoded as Windows-1252)
+ok(ZM.fixMojibake('^FDPR\u00c3\u2030JOU\u00c3\u2030^FS') === '^FDPR\u00c9JOU\u00c9^FS', 'repairs PRÃ‰JOUÃ‰ -> PRÉJOUÉ');
+ok(ZM.fixMojibake('^FDPR\u00c9JOU\u00c9^FS') === '^FDPR\u00c9JOU\u00c9^FS', 'leaves already-correct accents alone');
+ok(ZM.fixMojibake('^FD69,99$^FS') === '^FD69,99$^FS', 'leaves plain ASCII alone');
+ok(ZM.fixMojibake('\u00c3\u00a9') === '\u00e9', 'repairs two-byte é');
 
 console.log(fails ? `\n${fails} FAILING` : '\nall green');
 process.exit(fails ? 1 : 0);

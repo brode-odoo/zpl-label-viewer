@@ -102,6 +102,9 @@
   }
 
   function joinBlocks(text) {
+    // A text/plain page with no charset is decoded as Windows-1252 by Chrome,
+    // so UTF-8 labels (^CI28) arrive as mojibake; undo that.
+    if (document.characterSet !== 'UTF-8') text = window.__zplModel.fixMojibake(text);
     const blocks = String(text || '').match(BLOCK_RE);
     return blocks ? blocks.join('\n\n') : '';
   }
